@@ -4,6 +4,7 @@ import urllib.parse
 from io import BytesIO
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 from gtts import gTTS
 
 # Page configuration
@@ -28,6 +29,7 @@ with st.sidebar:
     is_boy = "Boy" in voice_choice
     gender_title = "Cute Indian Boyfriend" if is_boy else "Cute Indian Girlfriend"
     companion_avatar = "👦" if is_boy else "🌸"
+    speech_lang_code = "hi-IN" if not is_boy else "en-IN"
 
     # 2. Theme Customization
     st.markdown("---")
@@ -48,7 +50,7 @@ with st.sidebar:
     # 3. Audio Settings
     st.markdown("---")
     st.subheader("🔊 Audio Settings")
-    enable_voice = st.checkbox("Auto-play Voice on New Messages", value=True)
+    enable_voice = st.checkbox("Auto-generate MP3 Voice", value=True)
 
     # 4. User Memory & Preferences Form
     st.markdown("---")
@@ -117,7 +119,7 @@ st.markdown(f"""
 st.markdown(f'<div class="main-header">{companion_avatar} Indian AI Companion</div>', unsafe_allow_html=True)
 st.markdown(f'<div class="sub-header">Your realistic, voice-enabled {gender_title}</div>', unsafe_allow_html=True)
 
-# Build System Instruction based on selected gender role and user memory
+# Build System Instruction
 u_name = st.session_state.get("user_name", "Rahul")
 u_food = st.session_state.get("user_food", "Biryani / Chai")
 u_hobby = st.session_state.get("user_hobby", "Gaming & Music")
@@ -212,13 +214,43 @@ def generate_tts_audio(text, is_boy_voice=False):
     if not clean_text.strip():
         clean_text = "Hlo!"
     
-    # Use hi (Hindi) accent with gTTS
     tld_domain = "co.in" if is_boy_voice else "com"
     tts = gTTS(text=clean_text, lang='hi', tld=tld_domain, slow=False)
     fp = BytesIO()
     tts.write_to_fp(fp)
     fp.seek(0)
     return fp
+
+def render_browser_speech_button(text, lang_code, btn_id):
+    clean_txt = text.replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
+    js_html = f"""
+    <button id="spk_btn_{btn_id}" onclick="playSpeech_{btn_id}()" style="
+        background: linear-gradient(135deg, {selected_theme["primary"]} 0%, {selected_theme["accent"]} 100%);
+        color: white;
+        border: none;
+        border-radius: 16px;
+        padding: 6px 14px;
+        font-size: 13px;
+        cursor: pointer;
+        font-weight: 600;
+        margin-top: 4px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    ">🗣️ Speak Out Loud (Device Voice)</button>
+    <script>
+    function playSpeech_{btn_id}() {{
+        if ('speechSynthesis' in window) {{
+            window.speechSynthesis.cancel();
+            var msg = new SpeechSynthesisUtterance("{clean_txt}");
+            msg.lang = '{lang_code}';
+            msg.rate = 0.95;
+            window.speechSynthesis.speak(msg);
+        }} else {{
+            alert('Your browser does not support Speech Synthesis');
+        }}
+    }}
+    </script>
+    """
+    components.html(js_html, height=45)
 
 # Initialize session state for messages and preset prompts
 if "messages" not in st.session_state:
@@ -258,15 +290,13 @@ for idx, msg in enumerate(st.session_state.messages):
     with st.chat_message(role, avatar=avatar):
         st.markdown(msg["content"])
         
-        # Audio Player for Assistant Messages
+        # Audio Options for Assistant Messages
         if role == "assistant":
-            col_audio1, col_audio2 = st.columns([1.5, 3])
-            with col_audio1:
-                if st.button("🔊 Play Voice", key=f"btn_play_{idx}"):
-                    st.session_state[f"play_{idx}"] = True
+            # 1. Native Direct Browser Speech Button (Works on all mobile speakers instantly)
+            render_browser_speech_button(msg["content"], speech_lang_code, idx)
             
-            # Generate and play audio if auto-play is enabled or user clicks Play Voice button
-            if enable_voice or st.session_state.get(f"play_{idx}", False):
+            # 2. Server MP3 Audio Player
+            if enable_voice:
                 if "audio" not in msg or not msg["audio"]:
                     try:
                         msg["audio"] = generate_tts_audio(msg["content"], is_boy_voice=is_boy)
