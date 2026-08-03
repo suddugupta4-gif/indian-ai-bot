@@ -17,41 +17,67 @@ You are an interactive Indian AI companion/girlfriend.
 - Show genuine concern, sweet teasing, and playful dramatic reactions.
 """
 
-def query_free_ai(messages):
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+def query_groq(messages):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}] + messages,
+        "temperature": 0.7
+    }
+    res = requests.post(url, json=payload, headers=headers, timeout=20)
+    if res.status_code == 200:
+        data = res.json()
+        return data["choices"][0]["message"]["content"]
+    raise Exception(f"Groq API error {res.status_code}: {res.text}")
+
+def query_free_public_ai(messages):
+    FREE_MODELS = ["mistral", "llama", "qwen-coder", "deepseek"]
     url = "https://text.pollinations.ai/"
-    
-    # Free models that do not require payment (Status 402)
-    FREE_MODELS = ["mistral", "llama", "qwen-coder", None]
     
     for model_name in FREE_MODELS:
         payload = {
             "messages": [
                 {"role": "system", "content": SYSTEM_INSTRUCTION}
             ] + messages,
+            "model": model_name,
             "seed": 42
         }
-        if model_name:
-            payload["model"] = model_name
-
         try:
-            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=25)
-            if response.status_code == 200 and response.text.strip():
-                return response.text
+            res = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=15)
+            if res.status_code == 200 and res.text.strip():
+                return res.text
         except Exception:
             continue
 
-    # Fallback GET request if POST encounters issues
+    # Simple GET fallback
     try:
         last_msg = messages[-1]["content"] if messages else "Hello"
         prompt_text = f"System: {SYSTEM_INSTRUCTION}\nUser: {last_msg}\nAssistant:"
         encoded_prompt = urllib.parse.quote(prompt_text)
-        res = requests.get(f"https://text.pollinations.ai/{encoded_prompt}?model=mistral", timeout=25)
+        res = requests.get(f"https://text.pollinations.ai/{encoded_prompt}?model=mistral", timeout=15)
         if res.status_code == 200 and res.text.strip():
             return res.text
-    except Exception as e:
-        raise e
+    except Exception:
+        pass
 
-    raise Exception("Free AI server is temporarily busy. Please try sending your message again!")
+    raise Exception("Free AI server is temporarily busy. Please try again in a few seconds!")
+
+def get_ai_response(messages):
+    # Priority 1: Groq API (Super fast & 100% free 14,400 req/day)
+    if GROQ_API_KEY:
+        try:
+            return query_groq(messages)
+        except Exception:
+            pass
+            
+    # Priority 2: Free Public Inference
+    return query_free_public_ai(messages)
 
 # Initialize message history in Streamlit session
 if "messages" not in st.session_state:
@@ -69,7 +95,7 @@ if prompt := st.chat_input("Type your message in Hinglish..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Format messages for free AI API
+    # Format messages for AI API
     formatted_messages = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "assistant"
@@ -78,7 +104,7 @@ if prompt := st.chat_input("Type your message in Hinglish..."):
     # Generate response
     try:
         with st.spinner("Typing..."):
-            reply_text = query_free_ai(formatted_messages)
+            reply_text = get_ai_response(formatted_messages)
             st.session_state.messages.append({"role": "assistant", "content": reply_text})
             st.rerun()
     except Exception as e:
