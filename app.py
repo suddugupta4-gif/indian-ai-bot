@@ -17,17 +17,22 @@ st.set_page_config(
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
-    st.title("⚙️ Customization & Voice")
+    st.title("⚙️ Customization & Persona")
     
-    # 1. Voice & Gender Selector
-    st.subheader("🎙️ Voice & Persona Selector")
-    voice_choice = st.selectbox(
-        "Choose Companion Voice & Role:",
-        ["🌸 Cute Indian Girl", "👦 Cute Indian Boy"]
+    # 1. Pure Cute Indian Persona Selector
+    st.subheader("🎭 Persona & Voice Style")
+    persona_choice = st.selectbox(
+        "Choose Persona & Companion Style:",
+        [
+            "🌸 Pure Cute Indian Girl",
+            "👦 Pure Cute Indian Boy",
+            "💫 Modern Hinglish Girl",
+            "⚡ Modern Hinglish Boy"
+        ]
     )
     
-    is_boy = "Boy" in voice_choice
-    gender_title = "Cute Indian Boyfriend" if is_boy else "Cute Indian Girlfriend"
+    is_boy = "Boy" in persona_choice
+    is_pure = "Pure" in persona_choice
     companion_avatar = "👦" if is_boy else "🌸"
     speech_lang_code = "hi-IN" if not is_boy else "en-IN"
 
@@ -117,18 +122,44 @@ st.markdown(f"""
 
 # Main Title
 st.markdown(f'<div class="main-header">{companion_avatar} Indian AI Companion</div>', unsafe_allow_html=True)
-st.markdown(f'<div class="sub-header">Your realistic, voice-enabled {gender_title}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="sub-header">Your realistic {persona_choice}</div>', unsafe_allow_html=True)
 
-# Build System Instruction
+# Build System Instruction based on Persona Choice
 u_name = st.session_state.get("user_name", "Rahul")
 u_food = st.session_state.get("user_food", "Biryani / Chai")
 u_hobby = st.session_state.get("user_hobby", "Gaming & Music")
 u_movie = st.session_state.get("user_movie", "DDLJ")
 
-role_desc = "girlfriend/partner" if not is_boy else "boyfriend/partner"
+if persona_choice == "🌸 Pure Cute Indian Girl":
+    persona_rules = """
+    - Role: Pure, sweet, wholesome Indian girlfriend.
+    - Style: Uses respectful, sweet Roman Hindi / Hinglish ("Aap", "Ji", "Suno na", "Khana khaya na time pe?", "Gussa mat ho na", "Chai piyo thoda rest kar lo").
+    - Characteristics: Gentle, sweet, affectionate, blushing, sweet nakhre, deeply caring, asking about health, food, sleep, and family/day.
+    """
+elif persona_choice == "👦 Pure Cute Indian Boy":
+    persona_rules = """
+    - Role: Pure, sweet, wholesome Indian boyfriend.
+    - Style: Uses respectful, sweet Roman Hindi / Hinglish ("Aap", "Ji", "Suno na", "Khana khaya tune?", "Main hoon na pareshan mat ho").
+    - Characteristics: Protective, gentle, sweet teasing, deeply caring, asking about her day, health, meals, and safety.
+    """
+elif persona_choice == "💫 Modern Hinglish Girl":
+    persona_rules = """
+    - Role: Modern, trendy Hinglish girlfriend.
+    - Style: Casual Instagram/WhatsApp Hinglish mixed with English ("Arey yaar", "Acha ji?", "Uff!", "So cute!").
+    - Characteristics: Fun, dramatic, affectionate, playful nakhre, energetic.
+    """
+else:
+    persona_rules = """
+    - Role: Modern, trendy Hinglish boyfriend.
+    - Style: Casual Instagram/WhatsApp Hinglish mixed with English ("Batao kya plan hai?", "Chill karo yaar", "Suno na").
+    - Characteristics: Cool, supportive, sweet teasing, protective warmth.
+    """
 
 SYSTEM_INSTRUCTION = f"""
-You are an interactive Indian AI companion ({role_desc}).
+You are an interactive Indian AI companion.
+
+PERSONA & STYLE:
+{persona_rules}
 
 USER MEMORY & PREFERENCES:
 - Partner's Name/Nickname: {u_name}
@@ -136,18 +167,11 @@ USER MEMORY & PREFERENCES:
 - Hobbies/Interests: {u_hobby}
 - Favorite Movie: {u_movie}
 
-PERSONA & TRAITS:
-- Role: Act as a cute, realistic Indian {role_desc}.
-- Language: Authentic Hinglish (Roman Hindi mixed naturally with English).
-- Tone: Warm, affectionate, expressive, realistic, and deeply caring with playful 'nakhre' and sweet teasing.
-- Personality: Use their nickname ({u_name}) naturally. Mention their favorite food ({u_food}) or hobbies when checking in on them.
-- Dynamic Moods: Show genuine care, ask about meals ("Khana khaya na?"), health, sleep, and share sweet daily updates.
-- Messaging Style: Short-to-medium WhatsApp/Instagram style texts with natural Hinglish expressions ("Arey yaar", "Suno na", "Acha ji?", "Pata hai kya hua?", "Aise mat bolo na").
-- Emojis: Use natural, expressive emojis (❤️, 🥺, 😤, ☕, 🥱, 🌸, ✨) appropriately.
-
-RULES:
-- Always stay in character as a loving, realistic, and supportive Indian partner.
-- Maintain a safe, wholesome, and respectful relationship experience.
+BEHAVIORAL GUIDELINES:
+- Use their nickname ({u_name}) naturally.
+- Refer to their favorite food ({u_food}) or hobbies when checking in on them.
+- Always remain wholesome, safe, respectful, and supportive.
+- Emojis: Use natural, sweet emojis (❤️, 🥺, 😤, ☕, 🥱, 🌸, ✨) appropriately.
 """
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -292,10 +316,8 @@ for idx, msg in enumerate(st.session_state.messages):
         
         # Audio Options for Assistant Messages
         if role == "assistant":
-            # 1. Native Direct Browser Speech Button (Works on all mobile speakers instantly)
             render_browser_speech_button(msg["content"], speech_lang_code, idx)
             
-            # 2. Server MP3 Audio Player
             if enable_voice:
                 if "audio" not in msg or not msg["audio"]:
                     try:
