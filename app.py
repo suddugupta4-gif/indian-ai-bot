@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 import requests
 import streamlit as st
 
@@ -19,21 +20,38 @@ You are an interactive Indian AI companion/girlfriend.
 def query_free_ai(messages):
     url = "https://text.pollinations.ai/"
     
-    payload = {
-        "messages": [
-            {"role": "system", "content": SYSTEM_INSTRUCTION}
-        ] + messages,
-        "model": "openai",
-        "seed": 42
-    }
+    # Free models that do not require payment (Status 402)
+    FREE_MODELS = ["mistral", "llama", "qwen-coder", None]
     
-    headers = {"Content-Type": "application/json"}
-    
-    response = requests.post(url, json=payload, headers=headers, timeout=35)
-    if response.status_code == 200 and response.text.strip():
-        return response.text
-    else:
-        raise Exception(f"Free AI endpoint error (Status {response.status_code})")
+    for model_name in FREE_MODELS:
+        payload = {
+            "messages": [
+                {"role": "system", "content": SYSTEM_INSTRUCTION}
+            ] + messages,
+            "seed": 42
+        }
+        if model_name:
+            payload["model"] = model_name
+
+        try:
+            response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=25)
+            if response.status_code == 200 and response.text.strip():
+                return response.text
+        except Exception:
+            continue
+
+    # Fallback GET request if POST encounters issues
+    try:
+        last_msg = messages[-1]["content"] if messages else "Hello"
+        prompt_text = f"System: {SYSTEM_INSTRUCTION}\nUser: {last_msg}\nAssistant:"
+        encoded_prompt = urllib.parse.quote(prompt_text)
+        res = requests.get(f"https://text.pollinations.ai/{encoded_prompt}?model=mistral", timeout=25)
+        if res.status_code == 200 and res.text.strip():
+            return res.text
+    except Exception as e:
+        raise e
+
+    raise Exception("Free AI server is temporarily busy. Please try sending your message again!")
 
 # Initialize message history in Streamlit session
 if "messages" not in st.session_state:
@@ -51,7 +69,7 @@ if prompt := st.chat_input("Type your message in Hinglish..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Format messages for the free AI endpoint
+    # Format messages for free AI API
     formatted_messages = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "assistant"
@@ -64,4 +82,4 @@ if prompt := st.chat_input("Type your message in Hinglish..."):
             st.session_state.messages.append({"role": "assistant", "content": reply_text})
             st.rerun()
     except Exception as e:
-        st.error(f"Error generating response: {e}")
+        st.error(f"{e}")
