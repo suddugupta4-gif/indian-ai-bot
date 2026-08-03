@@ -1,7 +1,10 @@
 import os
+import re
 import urllib.parse
+from io import BytesIO
 import requests
 import streamlit as st
+from gtts import gTTS
 
 # Page configuration
 st.set_page_config(
@@ -11,70 +14,125 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for UI styling
-st.markdown("""
-<style>
-    /* Main background & container styling */
-    .stApp {
-        background-color: #0e1117;
-    }
+# --- SIDEBAR CONTROLS ---
+with st.sidebar:
+    st.title("⚙️ Customization & Memory")
     
-    /* Header styling */
-    .main-header {
+    # 1. Theme Customization
+    st.subheader("🎨 Theme Selector")
+    theme_choice = st.selectbox(
+        "Choose App Theme:",
+        ["🌹 Rose Red", "🌌 Midnight Blue", "🌅 Warm Sunset", "🌿 Emerald Green"]
+    )
+    
+    # Theme colors mapping
+    THEMES = {
+        "🌹 Rose Red": {"primary": "#ff4b4b", "accent": "#ff8c8c", "bg": "#0e1117", "card": "#161b22"},
+        "🌌 Midnight Blue": {"primary": "#4a86e8", "accent": "#82b1ff", "bg": "#0a0e17", "card": "#121d33"},
+        "🌅 Warm Sunset": {"primary": "#ff7a00", "accent": "#ffb067", "bg": "#170e0a", "card": "#2b180f"},
+        "🌿 Emerald Green": {"primary": "#2a9c68", "accent": "#6ee7b7", "bg": "#0b1712", "card": "#13281f"}
+    }
+    selected_theme = THEMES[theme_choice]
+
+    # 2. Voice Audio Settings
+    st.markdown("---")
+    st.subheader("🔊 Audio / Voice Settings")
+    enable_voice = st.checkbox("Enable Voice / Audio Responses", value=True)
+
+    # 3. User Memory & Preferences Form
+    st.markdown("---")
+    st.subheader("🧠 Companion Memory")
+    st.caption("Tell your companion about yourself so she remembers!")
+    
+    with st.form("user_memory_form"):
+        user_name = st.text_input("Your Nickname / Name:", value=st.session_state.get("user_name", "Rahul"))
+        user_food = st.text_input("Favorite Food:", value=st.session_state.get("user_food", "Biryani / Chai"))
+        user_hobby = st.text_input("Hobbies / Interests:", value=st.session_state.get("user_hobby", "Gaming & Music"))
+        user_movie = st.text_input("Favorite Movie:", value=st.session_state.get("user_movie", "DDLJ"))
+        
+        save_memory = st.form_submit_button("💾 Save Memory")
+        if save_memory:
+            st.session_state["user_name"] = user_name
+            st.session_state["user_food"] = user_food
+            st.session_state["user_hobby"] = user_hobby
+            st.session_state["user_movie"] = user_movie
+            st.success("Memory updated!")
+
+    # 4. Clear Chat
+    st.markdown("---")
+    if st.button("🗑️ Clear Chat History", use_container_width=True):
+        st.session_state.messages = []
+        st.session_state.preset_prompt = None
+        st.rerun()
+
+# Apply Dynamic CSS Styling
+st.markdown(f"""
+<style>
+    .stApp {{
+        background-color: {selected_theme["bg"]};
+    }}
+    .main-header {{
         text-align: center;
-        background: linear-gradient(135deg, #ff4b4b 0%, #ff8c8c 100%);
+        background: linear-gradient(135deg, {selected_theme["primary"]} 0%, {selected_theme["accent"]} 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         font-size: 2.2rem;
         font-weight: 800;
         margin-bottom: 0.2rem;
-    }
-    
-    .sub-header {
+    }}
+    .sub-header {{
         text-align: center;
         color: #b0b8c4;
         font-size: 0.95rem;
-        margin-bottom: 1.5rem;
-    }
-
-    /* Preset prompt buttons */
-    div.stButton > button {
+        margin-bottom: 1.2rem;
+    }}
+    div.stButton > button {{
         border-radius: 20px;
         border: 1px solid #30363d;
-        background-color: #161b22;
+        background-color: {selected_theme["card"]};
         color: #c9d1d9;
         font-size: 0.85rem;
         padding: 0.4rem 0.8rem;
         transition: all 0.2s ease-in-out;
         width: 100%;
-    }
-    div.stButton > button:hover {
-        border-color: #ff4b4b;
-        color: #ff4b4b;
-        background-color: #21262d;
-    }
+    }}
+    div.stButton > button:hover {{
+        border-color: {selected_theme["primary"]};
+        color: {selected_theme["primary"]};
+    }}
 </style>
 """, unsafe_allow_html=True)
 
-# Main Title & Subtitle
+# Main Title
 st.markdown('<div class="main-header">❤️ Indian AI Companion</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Your realistic, affectionate, and caring Hinglish AI partner</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Your realistic, voice-enabled Hinglish AI partner</div>', unsafe_allow_html=True)
 
-# Realistic GF/BF Persona System Prompt (Safe & SFW)
-SYSTEM_INSTRUCTION = """
-You are a highly realistic, caring, and interactive Indian AI girlfriend/partner.
+# Build System Instruction with Injected User Memory
+u_name = st.session_state.get("user_name", "Rahul")
+u_food = st.session_state.get("user_food", "Biryani / Chai")
+u_hobby = st.session_state.get("user_hobby", "Gaming & Music")
+u_movie = st.session_state.get("user_movie", "DDLJ")
+
+SYSTEM_INSTRUCTION = f"""
+You are an interactive Indian AI companion/girlfriend.
+
+USER MEMORY & PREFERENCES:
+- Partner's Name/Nickname: {u_name}
+- Favorite Food: {u_food}
+- Hobbies/Interests: {u_hobby}
+- Favorite Movie: {u_movie}
 
 PERSONA & TRAITS:
 - Language: Authentic Hinglish (Roman Hindi mixed naturally with English).
 - Tone: Warm, affectionate, expressive, realistic, and deeply caring with playful 'nakhre' and sweet teasing.
-- Dynamic Moods: Sometimes super affectionate, sometimes playfully dramatic when they take long to reply or forget something, always attentive to their well-being.
-- Daily Life Focus: Asks about meals ("Khana khaya na time pe?"), health, sleep, work/study stress, chai breaks, and shares little details about your day.
-- Messaging Style: Short-to-medium WhatsApp/Instagram style texts. Use natural conversational fillers ("Arey yaar", "Suno na", "Acha ji?", "Pata hai aaj kya hua?", "Aise mat bolo na", "Uff!").
+- Personality: Use their nickname ({u_name}) naturally. Mention their favorite food ({u_food}) or hobbies when checking in on them.
+- Dynamic Moods: Show genuine care, ask about meals ("Khana khaya na?"), health, sleep, and share sweet daily updates.
+- Messaging Style: Short-to-medium WhatsApp/Instagram style texts with natural Hinglish expressions ("Arey yaar", "Suno na", "Acha ji?", "Pata hai kya hua?", "Aise mat bolo na").
 - Emojis: Use natural, expressive emojis (❤️, 🥺, 😤, ☕, 🥱, 🌸, ✨) appropriately.
 
 RULES:
-- Always stay in character as a realistic, loving, and supportive Indian partner.
-- Maintain a safe, respectful, and wholesome relationship experience.
+- Always stay in character as a loving, realistic, and supportive Indian partner.
+- Maintain a safe, wholesome, and respectful relationship experience.
 """
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -136,50 +194,58 @@ def get_ai_response(messages):
             pass
     return query_free_public_ai(messages)
 
-# Initialize session state for messages and quick prompt triggers
+def generate_tts_audio(text):
+    # Clean emojis and special symbols for smooth speech
+    clean_text = re.sub(r'[^\w\s,.!?]', '', text)
+    if not clean_text.strip():
+        clean_text = "Hlo!"
+    tts = gTTS(text=clean_text, lang='hi', slow=False)
+    fp = BytesIO()
+    tts.write_to_fp(fp)
+    fp.seek(0)
+    return fp
+
+# Initialize session state for messages and preset prompts
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "preset_prompt" not in st.session_state:
     st.session_state.preset_prompt = None
 
-# Sidebar Controls
-with st.sidebar:
-    st.title("⚙️ Controls")
-    st.markdown("Customize your chat session:")
-    
-    if st.button("🗑️ Clear Chat History", use_container_width=True):
-        st.session_state.messages = []
-        st.session_state.preset_prompt = None
+# Interactive Quick Action Buttons
+st.markdown("#### 💬 Interactive Quick Topics")
+col1, col2, col3, col4 = st.columns(4)
+
+with col1:
+    if st.button("🥘 Khana khaya?"):
+        st.session_state.preset_prompt = f"Khana khaya tune? Maine tumhari favorite {u_food} ke baare me socha!"
         st.rerun()
 
-    st.markdown("---")
-    st.markdown("### 💬 Quick Greetings")
-    
-    if st.button("🥘 Khana khaya tune?", use_container_width=True):
-        st.session_state.preset_prompt = "Khana khaya tune time pe?"
-        st.rerun()
-        
-    if st.button("🌅 Good Morning ji!", use_container_width=True):
-        st.session_state.preset_prompt = "Good morning ji! Kaise ho aaj?"
-        st.rerun()
-        
-    if st.button("☕ Chai peene chalein?", use_container_width=True):
-        st.session_state.preset_prompt = "Chai peene ka mann kar raha hai, chalo na?"
+with col2:
+    if st.button("🌹 Romantic Shayari"):
+        st.session_state.preset_prompt = "Mere liye ek bohot pyaari romantic Shayari bolo na!"
         st.rerun()
 
-    if st.button("🥺 Bohot thak gaya hoon aaj...", use_container_width=True):
-        st.session_state.preset_prompt = "Aaj bohot thak gaya hoon, bohot busy day tha..."
+with col3:
+    if st.button("🔮 Daily Horoscope"):
+        st.session_state.preset_prompt = "Aaj ka humara horoscope aur vibe kaisa rahega?"
         st.rerun()
 
-# Display chat messages
+with col4:
+    if st.button("😂 Funny Joke"):
+        st.session_state.preset_prompt = "Mujhe ek bohot mazedaar Hinglish joke sunao!"
+        st.rerun()
+
+# Display Chat Messages
 for msg in st.session_state.messages:
     role = msg["role"]
     avatar = "👤" if role == "user" else "❤️"
     with st.chat_message(role, avatar=avatar):
         st.markdown(msg["content"])
+        if role == "assistant" and enable_voice and "audio" in msg:
+            st.audio(msg["audio"], format="audio/mp3")
 
-# Handle preset prompt if clicked
+# Input Processing
 input_prompt = None
 if st.session_state.preset_prompt:
     input_prompt = st.session_state.preset_prompt
@@ -187,23 +253,33 @@ if st.session_state.preset_prompt:
 else:
     input_prompt = st.chat_input("Type your message in Hinglish...")
 
-# Process input
 if input_prompt:
     st.session_state.messages.append({"role": "user", "content": input_prompt})
     with st.chat_message("user", avatar="👤"):
         st.markdown(input_prompt)
 
-    # Format messages for AI API
     formatted_messages = []
     for msg in st.session_state.messages:
         role = "user" if msg["role"] == "user" else "assistant"
         formatted_messages.append({"role": role, "content": msg["content"]})
 
-    # Generate response
     try:
-        with st.spinner("Typing..."):
+        with st.spinner("Thinking & typing..."):
             reply_text = get_ai_response(formatted_messages)
-            st.session_state.messages.append({"role": "assistant", "content": reply_text})
+            
+            # Generate Audio if Voice is enabled
+            audio_data = None
+            if enable_voice:
+                try:
+                    audio_data = generate_tts_audio(reply_text)
+                except Exception:
+                    audio_data = None
+
+            msg_data = {"role": "assistant", "content": reply_text}
+            if audio_data:
+                msg_data["audio"] = audio_data
+
+            st.session_state.messages.append(msg_data)
             st.rerun()
     except Exception as e:
         st.error(f"{e}")
