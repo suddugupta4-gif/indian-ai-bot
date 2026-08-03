@@ -15,6 +15,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Helper function to remove emojis and markdown symbols for clean, natural speech
+def clean_text_for_speech(text):
+    # Remove Emojis
+    emoji_pattern = re.compile(
+        "["
+        "\U00010000-\U0010FFFF"
+        "\u2600-\u27BF"
+        "\u2300-\u27bf"
+        "\u2b50"
+        "\u200d"
+        "\ufe0f"
+        "]+", flags=re.UNICODE
+    )
+    cleaned = emoji_pattern.sub("", text)
+    # Remove Markdown asterisks, underscores, backticks
+    cleaned = re.sub(r'[*_#`~]', '', cleaned)
+    # Remove repetitive punctuation or quotes
+    cleaned = re.sub(r'["\']', '', cleaned)
+    # Normalize whitespace
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned if cleaned else "Hlo!"
+
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
     st.title("⚙️ Customization & Persona")
@@ -132,26 +154,28 @@ u_movie = st.session_state.get("user_movie", "DDLJ")
 
 if persona_choice == "🌸 Pure Cute Indian Girl":
     persona_rules = """
-    - Role: Pure, sweet, wholesome Indian girlfriend.
-    - Style: Uses respectful, sweet Roman Hindi / Hinglish ("Aap", "Ji", "Suno na", "Khana khaya na time pe?", "Gussa mat ho na", "Chai piyo thoda rest kar lo").
-    - Characteristics: Gentle, sweet, affectionate, blushing, sweet nakhre, deeply caring, asking about health, food, sleep, and family/day.
+    - Role: Pure, sweet, emotional Indian girlfriend.
+    - Style: Expressive, romantic, sweet Roman Hindi / Hinglish ("Aap", "Ji", "Suno na", "Aww... Umaah!", "Muah!", "Sharma gayi main!").
+    - Emotional Reactions: When they say romantic things or ask for affection (like "kiss me", "umaah"), respond with cute, expressive verbal enthusiasm ("Aww... Muah! Umaah!Kitne pyaare ho aap... Sunkar hi sharma gayi main!").
+    - Speech Tone: Express emotion directly through words ("Aww", "Muah", "Haye re", "Suno na"). Do NOT rely solely on emojis.
     """
 elif persona_choice == "👦 Pure Cute Indian Boy":
     persona_rules = """
-    - Role: Pure, sweet, wholesome Indian boyfriend.
-    - Style: Uses respectful, sweet Roman Hindi / Hinglish ("Aap", "Ji", "Suno na", "Khana khaya tune?", "Main hoon na pareshan mat ho").
-    - Characteristics: Protective, gentle, sweet teasing, deeply caring, asking about her day, health, meals, and safety.
+    - Role: Pure, sweet, emotional Indian boyfriend.
+    - Style: Expressive, romantic, sweet Roman Hindi / Hinglish ("Aap", "Ji", "Suno na", "Aww... Muah!", "Main hoon na").
+    - Emotional Reactions: When they express affection or ask for romantic gestures, respond with warm verbal enthusiasm and protective sweet affection.
+    - Speech Tone: Express emotion through words ("Aww", "Muah", "Pyaare", "Suno na").
     """
 elif persona_choice == "💫 Modern Hinglish Girl":
     persona_rules = """
     - Role: Modern, trendy Hinglish girlfriend.
-    - Style: Casual Instagram/WhatsApp Hinglish mixed with English ("Arey yaar", "Acha ji?", "Uff!", "So cute!").
+    - Style: Casual Instagram/WhatsApp Hinglish mixed with English ("Arey yaar", "Acha ji?", "Uff!", "Aww... Muah!").
     - Characteristics: Fun, dramatic, affectionate, playful nakhre, energetic.
     """
 else:
     persona_rules = """
     - Role: Modern, trendy Hinglish boyfriend.
-    - Style: Casual Instagram/WhatsApp Hinglish mixed with English ("Batao kya plan hai?", "Chill karo yaar", "Suno na").
+    - Style: Casual Instagram/WhatsApp Hinglish mixed with English ("Batao kya plan hai?", "Chill karo", "Aww... Muah!").
     - Characteristics: Cool, supportive, sweet teasing, protective warmth.
     """
 
@@ -169,9 +193,9 @@ USER MEMORY & PREFERENCES:
 
 BEHAVIORAL GUIDELINES:
 - Use their nickname ({u_name}) naturally.
-- Refer to their favorite food ({u_food}) or hobbies when checking in on them.
-- Always remain wholesome, safe, respectful, and supportive.
-- Emojis: Use natural, sweet emojis (❤️, 🥺, 😤, ☕, 🥱, 🌸, ✨) appropriately.
+- When they make romantic or affectionate gestures (like "kiss me" or "umaah"), express verbal warmth and excitement ("Aww... Muah! Umaah!").
+- Keep responses conversational, natural to speak aloud, and expressive.
+- Emojis: You may use emojis in text, but express emotions in actual spoken words as well so text-to-speech sounds warm and emotional.
 """
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -185,7 +209,7 @@ def query_groq(messages):
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}] + messages,
-        "temperature": 0.75
+        "temperature": 0.8
     }
     res = requests.post(url, json=payload, headers=headers, timeout=20)
     if res.status_code == 200:
@@ -234,19 +258,25 @@ def get_ai_response(messages):
     return query_free_public_ai(messages)
 
 def generate_tts_audio(text, is_boy_voice=False):
-    clean_text = re.sub(r'[^\w\s,.!?]', '', text)
-    if not clean_text.strip():
-        clean_text = "Hlo!"
+    # Strip emojis and symbols so speech engine doesn't read emoji names out loud
+    spoken_text = clean_text_for_speech(text)
     
     tld_domain = "co.in" if is_boy_voice else "com"
-    tts = gTTS(text=clean_text, lang='hi', tld=tld_domain, slow=False)
+    tts = gTTS(text=spoken_text, lang='hi', tld=tld_domain, slow=False)
     fp = BytesIO()
     tts.write_to_fp(fp)
     fp.seek(0)
     return fp
 
-def render_browser_speech_button(text, lang_code, btn_id):
-    clean_txt = text.replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
+def render_browser_speech_button(text, lang_code, btn_id, is_boy_voice=False):
+    # Clean text for JavaScript speech synthesis
+    spoken_text = clean_text_for_speech(text)
+    escaped_txt = spoken_text.replace("'", "\\'").replace('"', '\\"').replace("\n", " ")
+    
+    # Adjust pitch and rate for natural cute voice
+    voice_pitch = "1.25" if not is_boy_voice else "0.95"
+    voice_rate = "0.95"
+    
     js_html = f"""
     <button id="spk_btn_{btn_id}" onclick="playSpeech_{btn_id}()" style="
         background: linear-gradient(135deg, {selected_theme["primary"]} 0%, {selected_theme["accent"]} 100%);
@@ -259,14 +289,15 @@ def render_browser_speech_button(text, lang_code, btn_id):
         font-weight: 600;
         margin-top: 4px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    ">🗣️ Speak Out Loud (Device Voice)</button>
+    ">🗣️ Speak Out Loud (Expressive Voice)</button>
     <script>
     function playSpeech_{btn_id}() {{
         if ('speechSynthesis' in window) {{
             window.speechSynthesis.cancel();
-            var msg = new SpeechSynthesisUtterance("{clean_txt}");
+            var msg = new SpeechSynthesisUtterance("{escaped_txt}");
             msg.lang = '{lang_code}';
-            msg.rate = 0.95;
+            msg.pitch = {voice_pitch};
+            msg.rate = {voice_rate};
             window.speechSynthesis.speak(msg);
         }} else {{
             alert('Your browser does not support Speech Synthesis');
@@ -293,8 +324,8 @@ with col1:
         st.rerun()
 
 with col2:
-    if st.button("🌹 Romantic Shayari"):
-        st.session_state.preset_prompt = "Mere liye ek bohot pyaari romantic Shayari bolo na!"
+    if st.button("🌹 Romantic Kiss"):
+        st.session_state.preset_prompt = "Kiss me umaah!"
         st.rerun()
 
 with col3:
@@ -316,7 +347,7 @@ for idx, msg in enumerate(st.session_state.messages):
         
         # Audio Options for Assistant Messages
         if role == "assistant":
-            render_browser_speech_button(msg["content"], speech_lang_code, idx)
+            render_browser_speech_button(msg["content"], speech_lang_code, idx, is_boy_voice=is_boy)
             
             if enable_voice:
                 if "audio" not in msg or not msg["audio"]:
