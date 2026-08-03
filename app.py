@@ -24,14 +24,38 @@ You are an interactive Indian AI companion/girlfriend.
 - Show genuine concern, sweet teasing, and playful dramatic reactions.
 """
 
-@st.cache_resource
-def get_model():
-    return genai.GenerativeModel(
-        model_name="gemini-1.5-flash",
-        system_instruction=SYSTEM_INSTRUCTION
-    )
+# Candidate models to try in order
+CANDIDATE_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-pro"
+]
 
-model = get_model()
+def get_working_model_name():
+    try:
+        supported = [
+            m.name.replace("models/", "") 
+            for m in genai.list_models() 
+            if "generateContent" in m.supported_generation_methods
+        ]
+        for candidate in CANDIDATE_MODELS:
+            if candidate in supported:
+                return candidate
+        if supported:
+            return supported[0]
+    except Exception:
+        pass
+    return "gemini-2.0-flash"
+
+if "selected_model" not in st.session_state:
+    st.session_state.selected_model = get_working_model_name()
+
+model = genai.GenerativeModel(
+    model_name=st.session_state.selected_model,
+    system_instruction=SYSTEM_INSTRUCTION
+)
 
 # Initialize chat session
 if "chat" not in st.session_state:
@@ -49,9 +73,29 @@ if prompt := st.chat_input("Type your message in Hinglish..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Get response from Gemini
-    response = st.session_state.chat.send_message(prompt)
-
-    # Display assistant response
-    with st.chat_message("assistant"):
-        st.markdown(response.text)
+    # Get response from Gemini with fallback
+    try:
+        response = st.session_state.chat.send_message(prompt)
+        with st.chat_message("assistant"):
+            st.markdown(response.text)
+    except Exception as e:
+        # Fallback to another model if current fails
+        fallback_success = False
+        for fallback_name in CANDIDATE_MODELS:
+            if fallback_name != st.session_state.selected_model:
+                try:
+                    fallback_model = genai.GenerativeModel(
+                        model_name=fallback_name,
+                        system_instruction=SYSTEM_INSTRUCTION
+                    )
+                    st.session_state.chat = fallback_model.start_chat(history=st.session_state.chat.history)
+                    st.session_state.selected_model = fallback_name
+                    response = st.session_state.chat.send_message(prompt)
+                    with st.chat_message("assistant"):
+                        st.markdown(response.text)
+                    fallback_success = True
+                    break
+                except Exception:
+                    continue
+        if not fallback_success:
+            st.error(f"Error generating response: {e}")
