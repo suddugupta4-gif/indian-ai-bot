@@ -26,76 +26,61 @@ You are an interactive Indian AI companion/girlfriend.
 
 # Candidate models to try in order
 CANDIDATE_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-latest",
     "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
     "gemini-1.5-pro",
+    "gemini-2.0-flash",
     "gemini-pro"
 ]
 
-def get_working_model_name():
-    try:
-        supported = [
-            m.name.replace("models/", "") 
-            for m in genai.list_models() 
-            if "generateContent" in m.supported_generation_methods
-        ]
-        for candidate in CANDIDATE_MODELS:
-            if candidate in supported:
-                return candidate
-        if supported:
-            return supported[0]
-    except Exception:
-        pass
-    return "gemini-2.0-flash"
+def generate_response_with_fallback(prompt, history):
+    last_error = None
+    for model_name in CANDIDATE_MODELS:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=SYSTEM_INSTRUCTION
+            )
+            chat = model.start_chat(history=history)
+            response = chat.send_message(prompt)
+            return response.text, chat.history, None
+        except Exception as e:
+            last_error = e
+            continue
+    return None, history, last_error
 
-if "selected_model" not in st.session_state:
-    st.session_state.selected_model = get_working_model_name()
+# Initialize message history in Streamlit session
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-model = genai.GenerativeModel(
-    model_name=st.session_state.selected_model,
-    system_instruction=SYSTEM_INSTRUCTION
-)
-
-# Initialize chat session
-if "chat" not in st.session_state:
-    st.session_state.chat = model.start_chat(history=[])
-
-# Display chat history
-for message in st.session_state.chat.history:
-    role = "user" if message.role == "user" else "assistant"
-    with st.chat_message(role):
-        st.markdown(message.parts[0].text)
+# Display chat history from session state
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
 # User input box
 if prompt := st.chat_input("Type your message in Hinglish..."):
-    # Display user input
+    # Append & display user message
+    st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Get response from Gemini with fallback
-    try:
-        response = st.session_state.chat.send_message(prompt)
+    # Convert session state messages to Gemini history format
+    gemini_history = []
+    for msg in st.session_state.messages[:-1]:
+        role = "user" if msg["role"] == "user" else "model"
+        gemini_history.append({"role": role, "parts": [msg["content"]]})
+
+    # Generate response
+    reply_text, updated_history, error = generate_response_with_fallback(prompt, gemini_history)
+
+    if reply_text:
+        st.session_state.messages.append({"role": "assistant", "content": reply_text})
         with st.chat_message("assistant"):
-            st.markdown(response.text)
-    except Exception as e:
-        # Fallback to another model if current fails
-        fallback_success = False
-        for fallback_name in CANDIDATE_MODELS:
-            if fallback_name != st.session_state.selected_model:
-                try:
-                    fallback_model = genai.GenerativeModel(
-                        model_name=fallback_name,
-                        system_instruction=SYSTEM_INSTRUCTION
-                    )
-                    st.session_state.chat = fallback_model.start_chat(history=st.session_state.chat.history)
-                    st.session_state.selected_model = fallback_name
-                    response = st.session_state.chat.send_message(prompt)
-                    with st.chat_message("assistant"):
-                        st.markdown(response.text)
-                    fallback_success = True
-                    break
-                except Exception:
-                    continue
-        if not fallback_success:
-            st.error(f"Error generating response: {e}")
+            st.markdown(reply_text)
+    else:
+        err_msg = str(error)
+        if "429" in err_msg or "Quota" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+            st.warning("⚠️ Free tier rate limit reached on Google Gemini API. Please wait a minute and try sending your message again!")
+        else:
+            st.error(f"Something went wrong: {error}")
