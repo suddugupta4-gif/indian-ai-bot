@@ -10,7 +10,7 @@ st.title("❤️ Indian AI Companion")
 # Fetch API key from Render Environment Variables
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
-    st.error("Missing GEMINI_API_KEY! Please add it in Render Environment Variables.")
+    st.error("Missing GEMINI_API_KEY! Please set it in Render Environment Variables.")
     st.stop()
 
 genai.configure(api_key=api_key)
@@ -24,17 +24,17 @@ You are an interactive Indian AI companion/girlfriend.
 - Show genuine concern, sweet teasing, and playful dramatic reactions.
 """
 
-# Candidate models to try in order
+# Valid, active Gemini model endpoints
 CANDIDATE_MODELS = [
     "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-1.5-pro",
     "gemini-2.0-flash",
-    "gemini-pro"
+    "gemini-1.5-pro"
 ]
 
 def generate_response_with_fallback(prompt, history):
+    quota_exceeded = False
     last_error = None
+    
     for model_name in CANDIDATE_MODELS:
         try:
             model = genai.GenerativeModel(
@@ -45,8 +45,14 @@ def generate_response_with_fallback(prompt, history):
             response = chat.send_message(prompt)
             return response.text, chat.history, None
         except Exception as e:
+            err_str = str(e)
+            if "429" in err_str or "Quota" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                quota_exceeded = True
             last_error = e
             continue
+
+    if quota_exceeded:
+        return None, history, "QUOTA_EXCEEDED"
     return None, history, last_error
 
 # Initialize message history in Streamlit session
@@ -79,8 +85,7 @@ if prompt := st.chat_input("Type your message in Hinglish..."):
         with st.chat_message("assistant"):
             st.markdown(reply_text)
     else:
-        err_msg = str(error)
-        if "429" in err_msg or "Quota" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
-            st.warning("⚠️ Free tier rate limit reached on Google Gemini API. Please wait a minute and try sending your message again!")
+        if error == "QUOTA_EXCEEDED":
+            st.warning("⚠️ **API Quota Reached**: Your Google Gemini API key has hit its free tier quota limit. Please wait a minute and try again, or generate a fresh API key at [Google AI Studio](https://aistudio.google.com/) and update your `GEMINI_API_KEY` on Render.")
         else:
-            st.error(f"Something went wrong: {error}")
+            st.error(f"Unable to connect to Gemini API: {error}")
