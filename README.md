@@ -1,8 +1,9 @@
 # Indian AI Companion Chatbot ❤️
 
-An interactive Indian AI Companion chatbot application built with Streamlit and Google Gemini API, ready to deploy on Render.com.
+An interactive Indian AI Companion chatbot application built with Streamlit using a completely free public AI inference engine—**No API Key required!**
 
 ## Features
+- **Zero API Key Setup**: Uses free public AI inference endpoints so you don't need any Gemini API key or quota management.
 - **Authentic Hinglish & English Persona**: Converses naturally in Roman Hindi / Hinglish and English.
 - **Realistic Emotions**: Expresses care, playful "nakhre", teasing, and daily check-ins.
 - **Streamlit Chat UI**: Clean, responsive messaging interface.
@@ -17,6 +18,4 @@ An interactive Indian AI Companion chatbot application built with Streamlit and 
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`
    - **Instance Type:** Free
-5. Under **Environment Variables**, add:
-   - `GEMINI_API_KEY`: *(Your Google Gemini API Key)*
-6. Click **Create Web Service**.
+5. Click **Create Web Service** (No environment variables or API keys needed!).
