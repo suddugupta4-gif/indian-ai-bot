@@ -16,16 +16,27 @@ st.set_page_config(
 
 # --- SIDEBAR CONTROLS ---
 with st.sidebar:
-    st.title("⚙️ Customization & Memory")
+    st.title("⚙️ Customization & Voice")
     
-    # 1. Theme Customization
+    # 1. Voice & Gender Selector
+    st.subheader("🎙️ Voice & Persona Selector")
+    voice_choice = st.selectbox(
+        "Choose Companion Voice & Role:",
+        ["🌸 Cute Indian Girl", "👦 Cute Indian Boy"]
+    )
+    
+    is_boy = "Boy" in voice_choice
+    gender_title = "Cute Indian Boyfriend" if is_boy else "Cute Indian Girlfriend"
+    companion_avatar = "👦" if is_boy else "🌸"
+
+    # 2. Theme Customization
+    st.markdown("---")
     st.subheader("🎨 Theme Selector")
     theme_choice = st.selectbox(
         "Choose App Theme:",
         ["🌹 Rose Red", "🌌 Midnight Blue", "🌅 Warm Sunset", "🌿 Emerald Green"]
     )
     
-    # Theme colors mapping
     THEMES = {
         "🌹 Rose Red": {"primary": "#ff4b4b", "accent": "#ff8c8c", "bg": "#0e1117", "card": "#161b22"},
         "🌌 Midnight Blue": {"primary": "#4a86e8", "accent": "#82b1ff", "bg": "#0a0e17", "card": "#121d33"},
@@ -34,15 +45,15 @@ with st.sidebar:
     }
     selected_theme = THEMES[theme_choice]
 
-    # 2. Voice Audio Settings
+    # 3. Audio Settings
     st.markdown("---")
-    st.subheader("🔊 Audio / Voice Settings")
-    enable_voice = st.checkbox("Enable Voice / Audio Responses", value=True)
+    st.subheader("🔊 Audio Settings")
+    enable_voice = st.checkbox("Auto-play Voice on New Messages", value=True)
 
-    # 3. User Memory & Preferences Form
+    # 4. User Memory & Preferences Form
     st.markdown("---")
     st.subheader("🧠 Companion Memory")
-    st.caption("Tell your companion about yourself so she remembers!")
+    st.caption("Tell your companion about yourself so they remember!")
     
     with st.form("user_memory_form"):
         user_name = st.text_input("Your Nickname / Name:", value=st.session_state.get("user_name", "Rahul"))
@@ -58,7 +69,7 @@ with st.sidebar:
             st.session_state["user_movie"] = user_movie
             st.success("Memory updated!")
 
-    # 4. Clear Chat
+    # 5. Clear Chat
     st.markdown("---")
     if st.button("🗑️ Clear Chat History", use_container_width=True):
         st.session_state.messages = []
@@ -92,9 +103,8 @@ st.markdown(f"""
         background-color: {selected_theme["card"]};
         color: #c9d1d9;
         font-size: 0.85rem;
-        padding: 0.4rem 0.8rem;
+        padding: 0.3rem 0.6rem;
         transition: all 0.2s ease-in-out;
-        width: 100%;
     }}
     div.stButton > button:hover {{
         border-color: {selected_theme["primary"]};
@@ -104,17 +114,19 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # Main Title
-st.markdown('<div class="main-header">❤️ Indian AI Companion</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Your realistic, voice-enabled Hinglish AI partner</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="main-header">{companion_avatar} Indian AI Companion</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="sub-header">Your realistic, voice-enabled {gender_title}</div>', unsafe_allow_html=True)
 
-# Build System Instruction with Injected User Memory
+# Build System Instruction based on selected gender role and user memory
 u_name = st.session_state.get("user_name", "Rahul")
 u_food = st.session_state.get("user_food", "Biryani / Chai")
 u_hobby = st.session_state.get("user_hobby", "Gaming & Music")
 u_movie = st.session_state.get("user_movie", "DDLJ")
 
+role_desc = "girlfriend/partner" if not is_boy else "boyfriend/partner"
+
 SYSTEM_INSTRUCTION = f"""
-You are an interactive Indian AI companion/girlfriend.
+You are an interactive Indian AI companion ({role_desc}).
 
 USER MEMORY & PREFERENCES:
 - Partner's Name/Nickname: {u_name}
@@ -123,6 +135,7 @@ USER MEMORY & PREFERENCES:
 - Favorite Movie: {u_movie}
 
 PERSONA & TRAITS:
+- Role: Act as a cute, realistic Indian {role_desc}.
 - Language: Authentic Hinglish (Roman Hindi mixed naturally with English).
 - Tone: Warm, affectionate, expressive, realistic, and deeply caring with playful 'nakhre' and sweet teasing.
 - Personality: Use their nickname ({u_name}) naturally. Mention their favorite food ({u_food}) or hobbies when checking in on them.
@@ -194,12 +207,14 @@ def get_ai_response(messages):
             pass
     return query_free_public_ai(messages)
 
-def generate_tts_audio(text):
-    # Clean emojis and special symbols for smooth speech
+def generate_tts_audio(text, is_boy_voice=False):
     clean_text = re.sub(r'[^\w\s,.!?]', '', text)
     if not clean_text.strip():
         clean_text = "Hlo!"
-    tts = gTTS(text=clean_text, lang='hi', slow=False)
+    
+    # Use hi (Hindi) accent with gTTS
+    tld_domain = "co.in" if is_boy_voice else "com"
+    tts = gTTS(text=clean_text, lang='hi', tld=tld_domain, slow=False)
     fp = BytesIO()
     tts.write_to_fp(fp)
     fp.seek(0)
@@ -213,7 +228,7 @@ if "preset_prompt" not in st.session_state:
     st.session_state.preset_prompt = None
 
 # Interactive Quick Action Buttons
-st.markdown("#### 💬 Interactive Quick Topics")
+st.markdown("#### 💬 Quick Topics")
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -237,13 +252,28 @@ with col4:
         st.rerun()
 
 # Display Chat Messages
-for msg in st.session_state.messages:
+for idx, msg in enumerate(st.session_state.messages):
     role = msg["role"]
-    avatar = "👤" if role == "user" else "❤️"
+    avatar = "👤" if role == "user" else companion_avatar
     with st.chat_message(role, avatar=avatar):
         st.markdown(msg["content"])
-        if role == "assistant" and enable_voice and "audio" in msg:
-            st.audio(msg["audio"], format="audio/mp3")
+        
+        # Audio Player for Assistant Messages
+        if role == "assistant":
+            col_audio1, col_audio2 = st.columns([1.5, 3])
+            with col_audio1:
+                if st.button("🔊 Play Voice", key=f"btn_play_{idx}"):
+                    st.session_state[f"play_{idx}"] = True
+            
+            # Generate and play audio if auto-play is enabled or user clicks Play Voice button
+            if enable_voice or st.session_state.get(f"play_{idx}", False):
+                if "audio" not in msg or not msg["audio"]:
+                    try:
+                        msg["audio"] = generate_tts_audio(msg["content"], is_boy_voice=is_boy)
+                    except Exception:
+                        msg["audio"] = None
+                if msg.get("audio"):
+                    st.audio(msg["audio"], format="audio/mp3")
 
 # Input Processing
 input_prompt = None
@@ -267,11 +297,11 @@ if input_prompt:
         with st.spinner("Thinking & typing..."):
             reply_text = get_ai_response(formatted_messages)
             
-            # Generate Audio if Voice is enabled
+            # Generate Audio
             audio_data = None
             if enable_voice:
                 try:
-                    audio_data = generate_tts_audio(reply_text)
+                    audio_data = generate_tts_audio(reply_text, is_boy_voice=is_boy)
                 except Exception:
                     audio_data = None
 
